@@ -3,24 +3,21 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat & Draw App v4 (Fixed)</title>
+    <title>Chat & Draw App v6 (Final Fix)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* CSSは前回から変更ありません */
         :root {
             --primary-hue: 220;
             --secondary-hue: 160;
-            --primary-color: hsl(var(--primary-hue), 70%, 55%);
-            --primary-light: hsl(var(--primary-hue), 70%, 95%);
             --background-color: #f0f2f5;
             --panel-bg-color: #ffffff;
-            --text-color: #333;
-            --light-text-color: #888;
+            --text-color: #242424;
+            --light-text-color: #65676b;
             --border-color: #e0e0e0;
-            --my-message-bg: linear-gradient(135deg, hsl(var(--primary-hue), 75%, 60%), hsl(var(--primary-hue), 65%, 50%));
-            --their-message-bg: #e4e6eb;
+            --my-message-bg: linear-gradient(135deg, hsl(var(--primary-hue), 80%, 65%), hsl(var(--primary-hue), 70%, 50%));
+            --their-message-bg: #e7e9ec;
         }
         * { box-sizing: border-box; }
         body {
@@ -42,12 +39,13 @@
             overflow: hidden;
         }
         .main-container { flex-grow: 1; }
-        .side-panel { width: 340px; flex-shrink: 0; }
+        .side-panel { width: 360px; flex-shrink: 0; }
         .header {
             padding: 0.75rem 1.25rem;
             font-weight: 700;
             border-bottom: 1px solid var(--border-color);
             font-size: 1.1em;
+            flex-shrink: 0;
         }
         .controls {
             display: flex;
@@ -55,6 +53,7 @@
             gap: 1.5rem;
             padding: 0.75rem 1.25rem;
             border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
         }
         #canvas { cursor: crosshair; }
         .chat-container { flex-grow: 1; display: flex; flex-direction: column; }
@@ -63,36 +62,87 @@
             padding: 1rem; margin: 0;
         }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .messages li {
-            max-width: 85%; padding: 0.6rem 0.9rem; border-radius: 18px;
-            margin-bottom: 0.25rem; word-wrap: break-word; line-height: 1.5;
+        .message-group {
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 0.75rem;
+        }
+        .my-message-group {
+            flex-direction: row-reverse;
+        }
+        .message-content {
+            display: flex;
+            flex-direction: column;
+            max-width: 85%;
+        }
+        .my-message-group .message-content {
+            align-items: flex-end;
+        }
+        .their-message-group .message-content {
+            align-items: flex-start;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.2em;
+            flex-shrink: 0;
+        }
+        .message-sender {
+            font-size: 0.9em;
+            font-weight: 700;
+            margin: 0 0 0.25rem 0;
+            color: var(--text-color);
+        }
+        .message-bubbles {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            position: relative;
+        }
+        .message-bubbles li {
+            padding: 0.6rem 0.9rem;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.5;
             animation: fadeIn 0.3s ease-out;
         }
-        .message-group { margin-bottom: 1rem; display: flex; flex-direction: column; }
-        .my-message-group { align-items: flex-end; }
-        .their-message-group { align-items: flex-start; }
-        .messages .system { text-align: center; color: var(--light-text-color); font-size: 0.8em; background-color: transparent; margin: 0.75rem auto; }
-        .my-message-group li { background: var(--my-message-bg); color: white; border-bottom-right-radius: 6px; }
-        .their-message-group li { background: var(--their-message-bg); color: var(--text-color); border-bottom-left-radius: 6px; }
-        .message-sender { font-size: 0.8em; font-weight: 500; margin: 0 0.5rem 0.25rem; color: var(--light-text-color); }
-        .form { display: flex; border-top: 1px solid var(--border-color); padding: 0.5rem; }
-        .input {
-            flex-grow: 1; padding: 0.75rem; border: none; background-color: #f0f2f5;
-            border-radius: 18px; outline: none; margin-right: 0.5rem;
+        .my-message-group .message-bubbles li {
+            background: var(--my-message-bg);
+            color: white;
+            border-bottom-right-radius: 6px;
         }
-        .submit {
-            flex-shrink: 0; border: none; background-color: var(--primary-color); color: white;
-            cursor: pointer; transition: background-color 0.2s; border-radius: 50%;
-            width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+        .their-message-group .message-bubbles li {
+            background: var(--their-message-bg);
+            color: var(--text-color);
+            border-bottom-left-radius: 6px;
         }
+        .their-message-group .message-bubbles::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -8px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 12px 12px 0;
+            border-color: transparent var(--their-message-bg) transparent transparent;
+        }
+        .messages .system { text-align: center; color: var(--light-text-color); font-size: 0.8em; margin: 0.75rem auto; }
+        .form { display: flex; border-top: 1px solid var(--border-color); padding: 0.5rem; flex-shrink: 0; }
+        .input { flex-grow: 1; padding: 0.75rem; border: none; background-color: #f0f2f5; border-radius: 18px; outline: none; margin-right: 0.5rem; }
+        .submit { flex-shrink: 0; border: none; background: hsl(var(--primary-hue), 70%, 55%); color: white; cursor: pointer; transition: background-color 0.2s; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
         .submit:hover { background-color: hsl(var(--primary-hue), 75%, 60%); }
         .submit svg { width: 20px; height: 20px; }
         .user-list-container { height: 250px; flex-shrink: 0; display: flex; flex-direction: column; }
         #user-list { list-style: none; padding: 0.5rem 1.25rem; margin: 0; overflow-y: auto; }
-        #user-list li {
-            padding: 0.6rem 0; font-size: 0.95em; display: flex; align-items: center; gap: 0.75rem;
-        }
-        #user-list svg { width: 10px; height: 10px; color: hsl(var(--secondary-hue), 60%, 50%); }
+        #user-list li { padding: 0.6rem 0; font-size: 0.95em; display: flex; align-items: center; gap: 0.75rem; }
+        #user-list .avatar { width: 24px; height: 24px; font-size: 0.9em; }
     </style>
 </head>
 <body>
@@ -100,13 +150,33 @@
     <div class="side-panel"></div>
 
     <script>
+    const AVATAR_COLORS = [
+        '#ff7675', '#74b9ff', '#55efc4', '#ffeaa7', '#a29bfe',
+        '#fd79a8', '#00b894', '#e17055', '#6c5ce7', '#fab1a0'
+    ];
+    
+    function getUserColor(username) {
+        let hash = 0;
+        for (let i = 0; i < username.length; i++) {
+            hash = username.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash % AVATAR_COLORS.length);
+        return AVATAR_COLORS[index];
+    }
+
+    function createAvatar(username) {
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.style.backgroundColor = getUserColor(username);
+        avatar.textContent = username.charAt(0).toUpperCase();
+        return avatar;
+    }
+
     function main() {
         const username = prompt("ユーザー名を入力してください:", "Guest" + Math.floor(Math.random() * 100)) || "Guest";
-
         const host = location.origin.replace(/^http/, 'ws');
         const ws = new WebSocket(`${host}/ws?username=${encodeURIComponent(username)}`);
         
-        // --- DOMの初期化 ---
         document.querySelector('.main-container').innerHTML = `
             <div class="header">お絵かきキャンバス</div>
             <div class="controls">
@@ -130,7 +200,6 @@
                 <ul id="user-list"></ul>
             </div>`;
 
-        // --- 変数と要素の宣言 ---
         let myId = null;
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -142,8 +211,7 @@
         const colorPicker = document.getElementById('colorPicker');
         const widthSlider = document.getElementById('widthSlider');
         const widthValue = document.getElementById('widthValue');
-
-        // --- WebSocket イベントハンドラ ---
+        
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             switch(msg.type) {
@@ -158,34 +226,40 @@
             }
         };
 
-        // --- チャット処理 ---
         let lastSenderId = null;
         function handleChat(data) {
             const isMyMessage = data.senderId === myId;
-            
-            // ★★★ バグ修正点 ★★★
-            // 他の人のチャットには、メッセージデータに含まれる `data.username` を使う
-            const senderName = data.username; 
 
-            if (data.senderId === lastSenderId) {
+            if (data.senderId === lastSenderId && !isMyMessage) {
                 const lastGroup = messages.lastElementChild;
+                const bubblesContainer = lastGroup.querySelector('.message-bubbles');
                 const li = document.createElement('li');
                 li.textContent = data.text;
-                lastGroup.appendChild(li);
+                bubblesContainer.appendChild(li);
             } else {
                 const group = document.createElement('div');
                 group.classList.add('message-group', isMyMessage ? 'my-message-group' : 'their-message-group');
-                
+
+                const content = document.createElement('div');
+                content.className = 'message-content';
+
+                // ★★★ ここが名前を表示する部分の修正点です ★★★
                 if (!isMyMessage) {
+                    group.appendChild(createAvatar(data.username));
                     const sender = document.createElement('div');
                     sender.classList.add('message-sender');
-                    sender.textContent = senderName; // 修正後の変数を使用
-                    group.appendChild(sender);
+                    sender.textContent = data.username; // 正しくdata.usernameを参照
+                    content.appendChild(sender); // content DIVにsenderを追加
                 }
                 
+                const bubblesContainer = document.createElement('div');
+                bubblesContainer.className = 'message-bubbles';
                 const li = document.createElement('li');
                 li.textContent = data.text;
-                group.appendChild(li);
+                bubblesContainer.appendChild(li);
+                
+                content.appendChild(bubblesContainer); // content DIVに吹き出しを追加
+                group.appendChild(content); // group DIVにcontentを追加
                 messages.appendChild(group);
             }
             
@@ -200,13 +274,28 @@
                 ws.send(JSON.stringify({ type: 'chat', text: text }));
                 input.value = '';
                 input.focus();
-                lastSenderId = null;
             }
         };
 
-        // ★★★ ここから下、前回省略していた関数の実装を追加 ★★★
+        function updateUserList(users) {
+            userList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                const avatar = createAvatar(user.username);
+                avatar.style.width = '24px';
+                avatar.style.height = '24px';
+                avatar.style.fontSize = '0.9em';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = user.username + (user.id === myId ? ' (あなた)' : '');
+                
+                li.appendChild(avatar);
+                li.appendChild(nameSpan);
+                userList.appendChild(li);
+            });
+            userCount.textContent = users.length;
+        }
 
-        // --- 描画処理 ---
         let drawing = false;
         const activePainters = {};
         
@@ -254,25 +343,13 @@
             }
         }
 
-        // --- 補助関数 ---
         function handleSystemMessage(data) {
             const li = document.createElement('li');
             li.className = 'system';
             li.textContent = data.message;
             messages.appendChild(li);
             messages.scrollTop = messages.scrollHeight;
-        }
-
-        function updateUserList(users) {
-            userList.innerHTML = '';
-            const onlineIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"></circle></svg>`;
-            users.forEach(user => {
-                const li = document.createElement('li');
-                const isYou = user.id === myId;
-                li.innerHTML = `${onlineIcon} ${user.username} ${isYou ? '<span style="color:#888;font-size:0.8em;">(あなた)</span>' : ''}`;
-                userList.appendChild(li);
-            });
-            userCount.textContent = users.length;
+            lastSenderId = null; // システムメッセージでグループ化をリセット
         }
 
         function resizeCanvas() {

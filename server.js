@@ -1,4 +1,3 @@
-// server.js
 const express = require('express')
 const expressWs = require('express-ws')
 const { v4: uuidv4 } = require('uuid')
@@ -15,31 +14,35 @@ app.ws('/ws', (ws, req) => {
   const clientId = uuidv4()
   const username = req.query.username || 'Anonymous'
   const clientInfo = { id: clientId, username: username, ws: ws }
+  
   clients.push(clientInfo)
 
   console.log(`${username} (${clientId}) connected. Total clients: ${clients.length}`)
 
-  // 1. 接続したクライアント本人に、IDと現在のユーザーリストを通知
+  // 1. 新規接続者（本人）に、自身のIDと現在の完全なユーザーリストを送信
   ws.send(JSON.stringify({
     type: 'welcome',
     clientId: clientId,
     users: clients.map(c => ({ id: c.id, username: c.username }))
   }))
 
-  // 2. 他の全員に、新規ユーザーの参加を通知
+  // 2. 他のクライアントにのみ、新規参加と更新されたユーザーリストを通知
   const joinMessage = {
     type: 'system',
     message: `${username}さんが参加しました。`,
   }
+  const updatedUserListMessage = {
+      type: 'user_list',
+      users: clients.map(c => ({ id: c.id, username: c.username }))
+  }
+
   clients.forEach(client => {
+    // 自分以外の、接続が生きているクライアントにだけ送信
     if (client.id !== clientId && client.ws.readyState === 1) {
-      client.ws.send(JSON.stringify(joinMessage))
+      client.ws.send(JSON.stringify(joinMessage));
+      client.ws.send(JSON.stringify(updatedUserListMessage));
     }
   })
-  
-  // 3. 他の全員に、更新されたユーザーリストを通知
-  broadcastUserList(clientId)
-
 
   ws.on('message', (message) => {
     const data = JSON.parse(message)
@@ -75,16 +78,10 @@ function broadcast(message) {
   })
 }
 
-function broadcastUserList(excludeClientId = null) {
+function broadcastUserList() {
   const userList = clients.map(c => ({ id: c.id, username: c.username }))
   const message = { type: 'user_list', users: userList }
-  const data = JSON.stringify(message)
-  
-  clients.forEach(client => {
-    if (client.id !== excludeClientId && client.ws.readyState === 1) {
-      client.ws.send(data)
-    }
-  })
+  broadcast(message)
 }
 
 app.listen(port, () => {

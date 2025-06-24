@@ -43,10 +43,6 @@ app.ws('/ws', (ws, req) => {
 
   ws.on('message', (message) => {
     const data = JSON.parse(message)
-    console.log(`Received from ${username}:`, data)
-
-    // ★★★ ロジックをシンプル化 ★★★
-    // 受信したメッセージに送信者情報を付与して、全員にブロードキャストする
     const outgoingMessage = {
       senderId: clientId,
       username: username,
@@ -61,13 +57,11 @@ app.ws('/ws', (ws, req) => {
     console.log(`${leavingUser?.username || 'A user'} disconnected. Total clients: ${clients.length}`)
 
     if (leavingUser) {
-      // ユーザーの退出を全員に通知
       broadcast({
         type: 'system',
         message: `${leavingUser.username}さんが退出しました。`,
       })
     }
-    // ユーザーリストを更新して全員に通知
     broadcastUserList()
   })
 })

@@ -1,157 +1,237 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat App</title>
+    <title>Chat & Draw App</title>
     <style>
-      .chat {
-        display: flex;
-        flex-direction: column;
-        height: 80vh;
-      }
-      .messages {
-        flex: 1;
-        overflow-y: auto;
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      .form {
-        display: flex;
-      }
-      .input {
-        flex: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-      }
-      .submit {
-        padding: 10px;
-        border: 1px solid #ccc;
-        background: #eee;
-        cursor: pointer;
-      }
+        body { font-family: sans-serif; display: flex; padding: 10px; gap: 20px; }
+        .main-container { display: flex; flex-direction: column; flex-grow: 1; }
+        .controls { display: flex; align-items: center; gap: 15px; padding: 10px; border: 1px solid #ccc; border-bottom: none; background: #f8f8f8;}
+        #canvas { border: solid 1px black; cursor: crosshair; }
+        .side-panel { width: 250px; display: flex; flex-direction: column; }
+        .chat-container { flex-grow: 1; display: flex; flex-direction: column; border: 1px solid #ccc; }
+        .messages { flex: 1; overflow-y: auto; list-style: none; padding: 10px; margin: 0; }
+        .messages li { margin-bottom: 5px; word-wrap: break-word; }
+        .messages .system { color: #888; font-style: italic; }
+        .messages .my-message { text-align: right; }
+        .form { display: flex; }
+        .input { flex: 1; padding: 10px; border: none; border-top: 1px solid #ccc; }
+        .submit { padding: 10px; border: none; border-top: 1px solid #ccc; border-left: 1px solid #ccc; background: #eee; cursor: pointer; }
+        .user-list-container { height: 200px; }
+        h3 { margin: 10px 0 5px 0; padding-bottom: 5px; border-bottom: 1px solid #eee;}
+        #user-list { list-style: none; padding: 0 10px;}
     </style>
-  </head>
-  <body>
-    <div class="chat">
-      <ul class="messages"></ul>
-      <form class="form">
-        <input class="input" autocomplete="off" />
-        <button class="submit">Send</button>
-      </form>
+</head>
+<body>
+    <div class="main-container">
+        <div class="controls">
+            <span>Color: <input type="color" id="colorPicker" value="#000000"></span>
+            <span>Width: <input type="range" id="widthSlider" min="1" max="20" value="2"> <span id="widthValue">2</span>px</span>
+        </div>
+        <canvas id="canvas" width="800" height="600"></canvas>
     </div>
-    <canvas
-      id="canvas"
-      width="600"
-      height="600"
-      style="border: solid 1px black"
-    ></canvas>
+
+    <div class="side-panel">
+        <div class="chat-container">
+            <ul class="messages"></ul>
+            <form class="form">
+                <input class="input" autocomplete="off" placeholder="メッセージを入力..." />
+                <button class="submit">Send</button>
+            </form>
+        </div>
+        <div class="user-list-container">
+            <h3>オンライン (<span id="user-count">0</span>)</h3>
+            <ul id="user-list"></ul>
+        </div>
+    </div>
 
     <script>
-      function main() {
-        const host = location.origin.replace(/^http/, 'ws')
-        const ws = new WebSocket(host + '/ws')
-        const myId = self.crypto.randomUUID().substr(0, 8)
+    function main() {
+        const username = prompt("ユーザー名を入力してください:", "Guest") || "Guest";
+        if (!username) return; // キャンセルされた場合
 
-        const canvas = document.getElementById('canvas')
-        const ctx = canvas.getContext('2d')
+        const host = location.origin.replace(/^http/, 'ws');
+        const ws = new WebSocket(`${host}/ws?username=${encodeURIComponent(username)}`);
 
-        let drawing = false
+        // DOM Elements
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const form = document.querySelector('.form');
+        const input = document.querySelector('.input');
+        const messages = document.querySelector('.messages');
+        const colorPicker = document.getElementById('colorPicker');
+        const widthSlider = document.getElementById('widthSlider');
+        const widthValue = document.getElementById('widthValue');
+        const userList = document.getElementById('user-list');
+        const userCount = document.getElementById('user-count');
+
+        let drawing = false;
+        let myId = null; // サーバーから割り当てられるのを待つ
+        
+        // --- 描画ロジック ---
+        // 以前のコードでは、ローカルで描画した後にサーバーに送信していました。
+        // これだと自分の画面で線が二重に描画される可能性があります。
+        // 新しいロジック：ユーザーのアクションをサーバーに送り、サーバーからの指示でのみ描画する
+        // これにより、全ユーザーの画面が完全に同期します。
+
+        let lastX = 0;
+        let lastY = 0;
 
         canvas.addEventListener('mousedown', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mousedown')
-        })
-        function mousedown() {
-          drawing = true
-          ctx.beginPath()
-        }
+            drawing = true;
+            [lastX, lastY] = [e.offsetX, e.offsetY];
+            // 線の開始点を送信
+            sendPaintEvent(e.offsetX, e.offsetY, 'start');
+        });
 
         canvas.addEventListener('mousemove', (e) => {
-          if (drawing) {
-            sendDrawingEvent(e.offsetX, e.offsetY, 'mousemove')
-          }
-        })
-        function mousemove(x, y) {
-          if (drawing) {
-            draw(x, y, true)
-          }
+            if (drawing) {
+                sendPaintEvent(e.offsetX, e.offsetY, 'draw');
+            }
+        });
+
+        const stopDrawing = () => {
+            if (drawing) {
+                drawing = false;
+                sendPaintEvent(0, 0, 'stop');
+            }
+        }
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        function sendPaintEvent(x, y, eventType) {
+            const message = {
+                type: 'paint',
+                eventType, // 'start', 'draw', 'stop'
+                x,
+                y,
+                color: colorPicker.value,
+                width: widthSlider.value
+            };
+            ws.send(JSON.stringify(message));
         }
 
-        canvas.addEventListener('mouseup', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseup')
-        })
-        function mouseup() {
-          drawing = false
-          ctx.beginPath()
-        }
-
-        canvas.addEventListener('mouseout', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseout')
-        })
-        function mouseout() {
-          drawing = false
-        }
-
-        function draw(x, y, dragging) {
-          if (dragging) {
-            ctx.lineTo(x, y)
-            ctx.stroke()
-          } else {
-            ctx.moveTo(x, y)
-          }
-        }
-
-        function sendDrawingEvent(x, y, control) {
-          const message = JSON.stringify({ x, y, control, type: 'paint' })
-          ws.send(message)
-        }
+        // --- WebSocket イベントハンドラ ---
+        ws.onopen = () => {
+            console.log("Connected to WebSocket server.");
+        };
 
         ws.onmessage = (event) => {
-          const msg = JSON.parse(event.data)
-          if (msg.type === 'paint') {
-            const { x, y, control } = msg
-            console.log({ control })
-            if (control === 'mousedown') {
-              mousedown()
-            } else if (control === 'mouseup') {
-              mouseup()
-            } else if (control === 'mousemove') {
-              mousemove(x, y)
-            } else if (control === 'mouseout') {
-              mouseout()
+            const msg = JSON.parse(event.data);
+            
+            switch(msg.type) {
+                case 'paint':
+                    handlePaint(msg);
+                    break;
+                case 'chat':
+                    handleChat(msg);
+                    break;
+                case 'system':
+                    handleSystemMessage(msg);
+                    break;
+                case 'user_list':
+                    updateUserList(msg.users);
+                    break;
             }
-          }
-          if (msg.type === 'chat') {
-            const { id, text } = msg
-            const messageList = document.querySelector('.messages')
-            const li = document.createElement('li')
-            if (id === myId) {
-              li.textContent = `(${id})自分:` + text
-            } else {
-              li.textContent = id + ': ' + text
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error: ', error);
+        };
+        
+        ws.onclose = () => {
+            handleSystemMessage({ message: 'サーバーとの接続が切れました。' });
+        };
+
+        // --- メッセージ処理関数 ---
+        const activePainters = {}; // 他のユーザーの描画状態を管理
+
+        function handlePaint(data) {
+            const { senderId, eventType, x, y, color, width } = data;
+
+            if (!activePainters[senderId]) {
+                activePainters[senderId] = {};
             }
-            messageList.appendChild(li)
-          }
+            const painter = activePainters[senderId];
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+
+            switch (eventType) {
+                case 'start':
+                    painter.lastX = x;
+                    painter.lastY = y;
+                    break;
+                case 'draw':
+                    if (painter.lastX === undefined) break; // startが来ていない場合は無視
+                    ctx.beginPath();
+                    ctx.moveTo(painter.lastX, painter.lastY);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    painter.lastX = x;
+                    painter.lastY = y;
+                    break;
+                case 'stop':
+                    delete activePainters[senderId];
+                    break;
+            }
+        }
+        
+        function handleChat(data) {
+            const { username, text } = data;
+            const li = document.createElement('li');
+            li.textContent = `${username}: ${text}`;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
         }
 
-        const form = document.querySelector('.form')
-
-        form.onsubmit = function (e) {
-          e.preventDefault()
-          const input = document.querySelector('.input')
-          const text = input.value
-          ws.send(JSON.stringify({ id: myId, text, type: 'chat' }))
-          input.value = ''
-          input.focus()
+        function handleSystemMessage(data) {
+            const li = document.createElement('li');
+            li.className = 'system';
+            li.textContent = data.message;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
         }
 
-        ws.onerror = function (error) {
-          console.error('WebSocket Error: ', error)
+        function updateUserList(users) {
+            userList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user.username;
+                userList.appendChild(li);
+            });
+            userCount.textContent = users.length;
         }
-      }
 
-      main()
+
+        // --- UIイベントリスナー ---
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            const text = input.value;
+            if (text) {
+                ws.send(JSON.stringify({ type: 'chat', text: text }));
+                
+                // 自分のメッセージを即座に表示
+                const li = document.createElement('li');
+                li.innerHTML = `<b>あなた:</b> ${text}`;
+                li.className = 'my-message';
+                messages.appendChild(li);
+                messages.scrollTop = messages.scrollHeight;
+                
+                input.value = '';
+                input.focus();
+            }
+        };
+
+        widthSlider.addEventListener('input', (e) => {
+            widthValue.textContent = e.target.value;
+        });
+    }
+
+    main();
     </script>
-  </body>
+</body>
 </html>

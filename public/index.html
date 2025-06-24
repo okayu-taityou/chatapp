@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat & Draw App v3</title>
+    <title>Chat & Draw App v4 (Fixed)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* CSSは前回から変更ありません */
         :root {
             --primary-hue: 220;
             --secondary-hue: 160;
@@ -106,7 +107,6 @@
         const ws = new WebSocket(`${host}/ws?username=${encodeURIComponent(username)}`);
         
         // --- DOMの初期化 ---
-        //（HTMLの構造はCSSの都合で少し変わっていますが、基本的な要素は同じです）
         document.querySelector('.main-container').innerHTML = `
             <div class="header">お絵かきキャンバス</div>
             <div class="controls">
@@ -132,8 +132,6 @@
 
         // --- 変数と要素の宣言 ---
         let myId = null;
-        const elements = { /* ... DOM要素の取得 ... */ };
-        // (elementsの定義は長くなるので省略しますが、前回のコードと同様です)
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const form = document.querySelector('.form');
@@ -141,8 +139,11 @@
         const messages = document.querySelector('.messages');
         const userList = document.getElementById('user-list');
         const userCount = document.getElementById('user-count');
+        const colorPicker = document.getElementById('colorPicker');
+        const widthSlider = document.getElementById('widthSlider');
+        const widthValue = document.getElementById('widthValue');
 
-        // --- WebSocket イベントハンドラ (ロジック刷新) ---
+        // --- WebSocket イベントハンドラ ---
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             switch(msg.type) {
@@ -157,38 +158,38 @@
             }
         };
 
-        // --- チャット処理 (ロジック刷新) ---
+        // --- チャット処理 ---
         let lastSenderId = null;
         function handleChat(data) {
-            const { senderId, username, text } = data;
-            const isMyMessage = senderId === myId;
+            const isMyMessage = data.senderId === myId;
+            
+            // ★★★ バグ修正点 ★★★
+            // 他の人のチャットには、メッセージデータに含まれる `data.username` を使う
+            const senderName = data.username; 
 
-            // 直前のメッセージと同じ送信者かチェック
-            if (senderId === lastSenderId) {
-                // グループに追加
+            if (data.senderId === lastSenderId) {
                 const lastGroup = messages.lastElementChild;
                 const li = document.createElement('li');
-                li.textContent = text;
+                li.textContent = data.text;
                 lastGroup.appendChild(li);
             } else {
-                // 新しいグループを作成
                 const group = document.createElement('div');
                 group.classList.add('message-group', isMyMessage ? 'my-message-group' : 'their-message-group');
                 
                 if (!isMyMessage) {
                     const sender = document.createElement('div');
                     sender.classList.add('message-sender');
-                    sender.textContent = username;
+                    sender.textContent = senderName; // 修正後の変数を使用
                     group.appendChild(sender);
                 }
                 
                 const li = document.createElement('li');
-                li.textContent = text;
+                li.textContent = data.text;
                 group.appendChild(li);
                 messages.appendChild(group);
             }
             
-            lastSenderId = senderId;
+            lastSenderId = data.senderId;
             messages.scrollTop = messages.scrollHeight;
         }
 
@@ -196,34 +197,93 @@
             e.preventDefault();
             const text = input.value;
             if (text && ws.readyState === 1) {
-                // ★ サーバーに送るだけ。自分の画面には表示しない！
                 ws.send(JSON.stringify({ type: 'chat', text: text }));
                 input.value = '';
                 input.focus();
-                lastSenderId = null; // 自分が送った後はグループ化をリセット
+                lastSenderId = null;
             }
         };
+
+        // ★★★ ここから下、前回省略していた関数の実装を追加 ★★★
+
+        // --- 描画処理 ---
+        let drawing = false;
+        const activePainters = {};
+        
+        canvas.addEventListener('mousedown', (e) => {
+            drawing = true;
+            sendPaintEvent(e.offsetX, e.offsetY, 'start');
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            if (drawing) sendPaintEvent(e.offsetX, e.offsetY, 'draw');
+        });
+        const stopDrawing = () => { if (drawing) { drawing = false; sendPaintEvent(0, 0, 'stop'); } };
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        
+        widthSlider.addEventListener('input', (e) => {
+            widthValue.textContent = e.target.value;
+        });
+
+        function sendPaintEvent(x, y, eventType) {
+            ws.send(JSON.stringify({
+                type: 'paint', eventType, x, y,
+                color: colorPicker.value,
+                width: widthSlider.value
+            }));
+        }
+        
+        function handlePaint(data) {
+            const { senderId, eventType, x, y, color, width } = data;
+            if (!activePainters[senderId]) activePainters[senderId] = {};
+            const painter = activePainters[senderId];
+
+            ctx.strokeStyle = color; ctx.lineWidth = width;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            if (eventType === 'start') {
+                painter.lastX = x; painter.lastY = y;
+            } else if (eventType === 'draw' && painter.lastX !== undefined) {
+                ctx.beginPath();
+                ctx.moveTo(painter.lastX, painter.lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                painter.lastX = x; painter.lastY = y;
+            } else if (eventType === 'stop') {
+                delete activePainters[senderId];
+            }
+        }
+
+        // --- 補助関数 ---
+        function handleSystemMessage(data) {
+            const li = document.createElement('li');
+            li.className = 'system';
+            li.textContent = data.message;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
+        }
 
         function updateUserList(users) {
             userList.innerHTML = '';
             const onlineIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"></circle></svg>`;
             users.forEach(user => {
                 const li = document.createElement('li');
-                li.innerHTML = `${onlineIcon} ${user.username} ${user.id === myId ? '<span style="color:#888;font-size:0.8em;">(あなた)</span>' : ''}`;
+                const isYou = user.id === myId;
+                li.innerHTML = `${onlineIcon} ${user.username} ${isYou ? '<span style="color:#888;font-size:0.8em;">(あなた)</span>' : ''}`;
                 userList.appendChild(li);
             });
             userCount.textContent = users.length;
         }
 
-        // --- システムメッセージと描画、リサイズなどの補助関数 ---
-        // (これらの関数の内容は前回とほぼ同じです)
-        function handleSystemMessage(data) { /* ... */ }
-        const activePainters = {};
-        function handlePaint(data) { /* ... */ }
-        function resizeCanvas() { /* ... */ }
+        function resizeCanvas() {
+            const parent = canvas.parentElement;
+            const controlsHeight = parent.querySelector('.controls').offsetHeight;
+            const headerHeight = parent.querySelector('.header').offsetHeight;
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight - controlsHeight - headerHeight;
+        }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
-        // (補助関数の詳細なコードは省略)
     }
     main();
     </script>
